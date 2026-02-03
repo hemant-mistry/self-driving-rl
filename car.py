@@ -16,35 +16,99 @@ class Car:
         self.turn_speed = 5 # degrees per frame
         self.font = font
 
+    def _get_corners(self, x=None, y=None, heading=None):
+        """Return the four corner points (world coords) of the car."""
+        if x is None: x = self.x
+        if y is None: y = self.y
+        if heading is None: heading = self.heading
 
-    def update(self, keys):
+        w = self.width
+        h = self.height
+        rad = math.radians(heading)
+        cos_t = math.cos(rad)
+        sin_t = math.sin(rad)
+
+        local = [
+            (-w/2, -h/2),
+            (w/2, -h/2),
+            (w/2, h/2),
+            (-w/2, h/2)
+        ]
+
+        world = []
+        for px, py in local:
+            rx = px * cos_t - py * sin_t + x
+            ry = px * sin_t + py * cos_t + y
+            world.append((rx, ry))
+
+        return world
+
+
+    def _point_in_polygon(self, px, py, poly):
+        """Ray casting point-in-polygon. poly is a list of (x,y)."""
+        inside = False
+        n = len(poly)
+        j = n - 1
+        for i in range(n):
+            xi, yi = poly[i]
+            xj, yj = poly[j]
+            intersect = ((yi > py) != (yj > py)) and \
+                        (px < (xj - xi) * (py - yi) / (yj - yi + 1e-12) + xi)
+            if intersect:
+                inside = not inside
+            j = i
+        return inside
+
+
+    def _all_corners_inside_polygon(self, poly):
+        corners = self._get_corners()
+        for cx, cy in corners:
+            if not self._point_in_polygon(cx, cy, poly):
+                return False
+        return True
+
+    def update(self, keys, road_polygon):
+        # store previous pose for potential revert
+        self.prev_x = self.x
+        self.prev_y = self.y
+        self.prev_heading = self.heading
+
         # steering
         if keys[pygame.K_LEFT]:
-            self.heading-=self.turn_speed
+            self.heading -= self.turn_speed
         if keys[pygame.K_RIGHT]:
-            self.heading+=self.turn_speed
+            self.heading += self.turn_speed
 
         # throttle/ brake
         if keys[pygame.K_UP]:
-            self.speed+=self.acceleration
+            self.speed += self.acceleration
         elif keys[pygame.K_DOWN]:
-            self.speed-=self.acceleration
+            self.speed -= self.acceleration
         else:
-            self.speed*=0.95 #friction /slow down
+            self.speed *= 0.95  # friction / slow down
 
-        
         # clamp speed
-        if self.speed>self.max_speed:
+        if self.speed > self.max_speed:
             self.speed = self.max_speed
-        
-        if self.speed< -self.max_speed/2:
-            self.speed = -self.max_speed/2
+        if self.speed < -self.max_speed / 2:
+            self.speed = -self.max_speed / 2
 
-        
-        #update position using heading
+        # tentative move
         rad = math.radians(self.heading)
-        self.x += self.speed * math.cos(rad)
-        self.y += self.speed * math.sin(rad)
+        dx = self.speed * math.cos(rad)
+        dy = self.speed * math.sin(rad)
+
+        self.x += dx
+        self.y += dy
+
+        # collision check: if any corner outside road polygon, revert and damp speed
+        if not self._all_corners_inside_polygon(road_polygon):
+            # simple collision response: revert position and reduce speed
+            self.x = self.prev_x
+            self.y = self.prev_y
+            self.heading = self.prev_heading
+            self.speed *= -0.2
+
 
 
 
