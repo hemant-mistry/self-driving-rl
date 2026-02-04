@@ -110,6 +110,47 @@ class Car:
             self.speed *= -0.2
 
 
+    def rl_update(self, action, road_polygon):
+        # store previous pose for potential revert
+        self.prev_x = self.x
+        self.prev_y = self.y
+        self.prev_heading = self.heading
+
+        if action == 3:
+            self.heading -= self.turn_speed
+        elif action == 4:
+            self.heading += self.turn_speed
+        
+        if action == 1:
+            self.speed += self.acceleration
+        elif action == 2:
+            self.speed -= self.acceleration
+        else:
+            self.speed *= 0.95
+
+        # clamp speed
+        if self.speed > self.max_speed:
+            self.speed = self.max_speed
+        if self.speed < -self.max_speed / 2:
+            self.speed = -self.max_speed / 2
+
+        # tentative move
+        rad = math.radians(self.heading)
+        dx = self.speed * math.cos(rad)
+        dy = self.speed * math.sin(rad)
+
+        self.x += dx
+        self.y += dy
+
+        # collision check: if any corner outside road polygon, revert and damp speed
+        if not self._all_corners_inside_polygon(road_polygon):
+            # simple collision response: revert position and reduce speed
+            self.x = self.prev_x
+            self.y = self.prev_y
+            self.heading = self.prev_heading
+            self.speed *= -0.2
+
+
 
 
     def draw_car(self, screen, x, y, heading, width, height, color=(0,0,255), debug = True):

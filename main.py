@@ -2,7 +2,7 @@ import pygame
 import sys
 import math
 from car import Car
-
+import random
 pygame.init()
 
 # -----------------------------
@@ -173,8 +173,10 @@ while running:
     draw_gate(screen, left_edge[3], right_edge[3], GREEN, "START")
     draw_gate(screen, left_edge[-4], right_edge[-4], RED, "FINISH")
 
-    keys = pygame.key.get_pressed()
-    car.update(keys, road_polygon)   # <-- pass road polygon for collision checks
+    #keys = pygame.key.get_pressed()
+    action = random.randint(0, 4)
+
+    car.rl_update(action=action, road_polygon=road_polygon)   # <-- pass road polygon for collision checks
     car.draw(screen)
 
     for event in pygame.event.get():
