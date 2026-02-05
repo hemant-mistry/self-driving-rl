@@ -115,6 +115,7 @@ class Car:
         self.prev_x = self.x
         self.prev_y = self.y
         self.prev_heading = self.heading
+        self.collided = False
 
         if action == 3:
             self.heading -= self.turn_speed
@@ -149,6 +150,7 @@ class Car:
             self.y = self.prev_y
             self.heading = self.prev_heading
             self.speed *= -0.2
+            self.collided = True
 
 
 
