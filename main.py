@@ -278,10 +278,17 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 18)
 
 car = Car(centerline[0][0], centerline[0][1] + 40, font=font)
+
 # Initialize state before loop
 heading_error = compute_heading_error(car.x, car.y, car.heading, centerline)
 distance_to_center = compute_distance_to_centerline(car.x, car.y, centerline)
 state = discretize_state(car.speed, heading_error, distance_to_center)
+
+# Define the goal
+finish_line_point = centerline[-1]
+
+prev_dist_to_finish = math.hypot(car.x - finish_line_point[0], car.y-finish_line_point[1])
+
 # -----------------------------
 # MAIN LOOP
 # -----------------------------
@@ -319,20 +326,31 @@ while running:
     next_state = discretize_state(car.speed,heading_error,distance_to_center)
     text = font.render(f"State: {next_state}", True, (0, 255, 255))
     screen.blit(text, (10, 150))
+
+    curr_dist_to_finish = math.hypot(car.x - finish_line_point[0], car.y-finish_line_point[1])
+    progress = prev_dist_to_finish - curr_dist_to_finish
+
     reward = 0.0
+    reward+=progress*2.0
     if car.speed>0:
         reward+=0.1
     else:
         reward-=0.1
 
     reward-=0.05*abs(heading_error)
-    reward-=0.1*distance_to_center
-
+    reward-=3.0*distance_to_center
+    if car.collided:
+        reward-=10
+    prev_dist_to_finish = curr_dist_to_finish
     best_next = max(Q[next_state])
 
     Q[prev_state][action] += alpha * (
         reward + gamma * best_next - Q[prev_state][action]
         )
+    
+    # # Decay epsilon
+    # if epsilon > 0.01:
+    #     epsilon *= 0.995  # Slowly reduce randomness
     car.draw(screen)    
 
     for event in pygame.event.get():
