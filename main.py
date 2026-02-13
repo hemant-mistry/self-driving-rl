@@ -19,10 +19,10 @@ WHITE = (255, 255, 255)
 GREEN = (0, 200, 0)
 RED = (200, 0, 0)
 
-Q = defaultdict(lambda: [0.0] * 5)
+Q = defaultdict(lambda: [0.0] * 9)
 alpha = 0.1     # learning rate
 gamma = 0.95    # discount factor
-epsilon = 0.2   # exploration rate
+epsilon = 0.6   # exploration rate
 # -----------------------------
 # RAW TRACK (LOGICAL SPACE)
 # -----------------------------
@@ -166,8 +166,23 @@ def compute_distance_to_centerline(car_x, car_y, centerline):
 
     return min_dist
 
+def compute_future_heading_error(car_x, car_y, car_heading, centerline, lookahead=10):
+    min_idx = 0
+    min_dist = float("inf")
+    for i in range(len(centerline)):
+        d = math.hypot(car_x-centerline[i][0], car_y-centerline[i][1])
+        if d < min_dist:
+            min_dist = d
+            min_idx = i
 
-def discretize_state(speed, heading_error, distance):
+    i2 = min(min_idx + lookahead, len(centerline)-1)
+    dx = centerline[i2][0] - centerline[min_idx][0]
+    dy = centerline[i2][1] - centerline[min_idx][1]
+    road_angle = math.degrees(math.atan2(dy, dx))
+    return normalize_angle_deg(car_heading - road_angle)
+
+
+def discretize_state(speed, heading_error, distance, future_heading_error):
     # Speed
     if abs(speed) < 0.5:
         s = 0      # STOPPED
@@ -176,7 +191,7 @@ def discretize_state(speed, heading_error, distance):
     else:
         s = 2      # FAST
 
-    # Heading
+    # Heading (current)
     if heading_error < -20:
         h = 0      # HARD_LEFT
     elif heading_error < -5:
@@ -196,7 +211,18 @@ def discretize_state(speed, heading_error, distance):
     else:
         d = 2      # FAR
 
-    return (s, h, d)
+    # Future heading error (lookahead) discretized into 3 bins
+    # Negative => road turns left ahead; positive => road turns right ahead
+    if future_heading_error < -10:
+        fh = 0    # FUTURE_LEFT
+    elif future_heading_error > 10:
+        fh = 2    # FUTURE_RIGHT
+    else:
+        fh = 1    # FUTURE_STRAIGHT
+
+    # Always return a tuple (so Q dict keys are consistent)
+    return (s, h, d, fh)
+
 
 
 
@@ -282,10 +308,12 @@ car = Car(centerline[0][0], centerline[0][1] + 40, font=font)
 # Initialize state before loop
 heading_error = compute_heading_error(car.x, car.y, car.heading, centerline)
 distance_to_center = compute_distance_to_centerline(car.x, car.y, centerline)
-state = discretize_state(car.speed, heading_error, distance_to_center)
+future_heading_error = compute_future_heading_error(car_heading=car.heading, car_x=car.x, car_y=car.y, centerline=centerline)
+
+state = discretize_state(car.speed, heading_error, distance_to_center,future_heading_error)
 
 # Define the goal
-finish_line_point = centerline[-1]
+finish_line_point = centerline[-4]
 
 prev_dist_to_finish = math.hypot(car.x - finish_line_point[0], car.y-finish_line_point[1])
 
@@ -293,6 +321,12 @@ prev_dist_to_finish = math.hypot(car.x - finish_line_point[0], car.y-finish_line
 # MAIN LOOP
 # -----------------------------
 running = True
+tries = 0;
+current_lap_clean = True
+lap_times = []
+best_lap = None
+lap_start_time = pygame.time.get_ticks()
+
 while running:
     screen.fill(BLACK)
 
@@ -305,11 +339,22 @@ while running:
     draw_gate(screen, left_edge[3], right_edge[3], GREEN, "START")
     draw_gate(screen, left_edge[-4], right_edge[-4], RED, "FINISH")
 
+    #  Lap timings
+    current_time = (pygame.time.get_ticks() - lap_start_time) / 1000.0
+    lap_text = font.render(f"Lap Time: {current_time:.1f}s", True, (200, 200, 255))
+    lap_text_x = WIDTH - lap_text.get_width() - MARGIN
+    screen.blit(lap_text, (lap_text_x, 50))
+
+    if best_lap is not None:
+        best_text = font.render(f"Best Lap: {best_lap:.2f}s", True, (100, 255, 100))
+        best_text_x = WIDTH - best_text.get_width() - MARGIN
+        screen.blit(best_text, (best_text_x, 70))
+
     #keys = pygame.key.get_pressed()
     if random.random() < epsilon:
-        action = random.randint(0, 4)   # explore
+        action = random.randint(0,8)   # explore
     else:
-        action = max(range(5), key=lambda a: Q[state][a])  # exploit
+        action = max(range(9), key=lambda a: Q[state][a])  # exploit
 
     prev_state = state
 
@@ -323,24 +368,37 @@ while running:
     text = font.render(f"Distance to centerline: {distance_to_center:.1f}",True,(255, 200, 0))
     screen.blit(text, (10, 120))
     
-    next_state = discretize_state(car.speed,heading_error,distance_to_center)
+    future_heading_error = compute_future_heading_error(car.x, car.y, car.heading, centerline)
+    next_state = discretize_state(car.speed,heading_error,distance_to_center, future_heading_error)
     text = font.render(f"State: {next_state}", True, (0, 255, 255))
     screen.blit(text, (10, 150))
+
+    tries_text = f"Total Tries: {tries}"
+    text_surface = font.render(tries_text, True, (255, 255, 255))
+    tries_x = WIDTH - text_surface.get_width() - MARGIN
+    screen.blit(text_surface, (tries_x, 10))
 
     curr_dist_to_finish = math.hypot(car.x - finish_line_point[0], car.y-finish_line_point[1])
     progress = prev_dist_to_finish - curr_dist_to_finish
 
     reward = 0.0
-    reward+=progress*2.0
+    reward += max(progress, 0) * 5.0
+    
+    if progress < 0:
+        reward -= 1.0
+
+
     if car.speed>0:
         reward+=0.1
     else:
         reward-=0.1
 
-    reward-=0.05*abs(heading_error)
-    reward-=3.0*distance_to_center
+    reward -= abs(heading_error) / 90.0
+    reward -= min(distance_to_center / (ROAD_WIDTH/2), 1.0)
     if car.collided:
         reward-=10
+        current_lap_clean = False
+
     prev_dist_to_finish = curr_dist_to_finish
     best_next = max(Q[next_state])
 
@@ -348,9 +406,54 @@ while running:
         reward + gamma * best_next - Q[prev_state][action]
         )
     
-    # # Decay epsilon
-    # if epsilon > 0.01:
-    #     epsilon *= 0.995  # Slowly reduce randomness
+
+    state = next_state
+    if curr_dist_to_finish < 40:
+        print(f"Lap Finished!")
+        lap_end_time = pygame.time.get_ticks()
+        lap_time_sec = (lap_end_time-lap_start_time)/1000.0
+        lap_times.append(lap_time_sec)
+
+        if best_lap is None or best_lap>lap_time_sec:
+            best_lap = lap_time_sec
+        
+        print(f"Lap {tries + 1} finished in {lap_time_sec:.2f}s | Best: {best_lap:.2f}s")
+
+        # Extra reward for finishing
+        Q[prev_state][action] += alpha * (100 + gamma * 0 - Q[prev_state][action])
+
+        tries += 1
+
+        # Reset Physics: place the car exactly where it was spawned initially
+        car.x = centerline[0][0]
+        car.y = centerline[0][1] + 40   # <-- IMPORTANT: same offset used at initial creation
+        car.speed = 0.0
+
+
+        # Align heading with the first centerline segment so it faces the track
+        dx0 = centerline[1][0] - centerline[0][0]
+        dy0 = centerline[1][1] - centerline[0][1]
+        car.heading = math.degrees(math.atan2(dy0, dx0))
+
+        car.collided = False
+        current_lap_clean = True
+
+        # Reset Distance Tracker
+        prev_dist_to_finish = math.hypot(car.x - finish_line_point[0], car.y - finish_line_point[1])
+
+        # Reset the brain state too
+        heading_error = compute_heading_error(car.x, car.y, car.heading, centerline)
+        distance_to_center = compute_distance_to_centerline(car.x, car.y, centerline)
+        future_heading_error = compute_future_heading_error(car.x, car.y, car.heading, centerline)
+        state = discretize_state(car.speed, heading_error, distance_to_center, future_heading_error)
+        prev_state = state
+
+        # Reset the timer
+        lap_start_time = pygame.time.get_ticks()
+
+
+    # Decay epsilon
+    epsilon = max(0.02, epsilon * 0.95)
     car.draw(screen)    
 
     for event in pygame.event.get():

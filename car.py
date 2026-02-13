@@ -117,14 +117,20 @@ class Car:
         self.prev_heading = self.heading
         self.collided = False
 
-        if action == 3:
+        # --- DECODE ACTION (0 to 8) ---
+        # Action Map:
+        # 0: Idle, 1: Accel, 2: Brake
+        # 3: Left, 4: Left+Accel, 5: Left+Brake
+        # 6: Right, 7: Right+Accel, 8: Right+Brake
+
+        if action in [3,4,5]:
             self.heading -= self.turn_speed
-        elif action == 4:
+        elif action in [6,7,8]:
             self.heading += self.turn_speed
         
-        if action == 1:
+        if action in [1,4,7]:
             self.speed += self.acceleration
-        elif action == 2:
+        elif action in [2,5,8]:
             self.speed -= self.acceleration
         else:
             self.speed *= 0.95
