@@ -90,3 +90,7 @@ This balances *speed*, *stability*, and *track adherence*.
 
 
 **Built with curiosity, frustration, and a lot of debugging ;)**
+
+Best lap time yet: 5.82s
+
+![alt text](image.png)

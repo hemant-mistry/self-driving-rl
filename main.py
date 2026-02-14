@@ -22,7 +22,7 @@ RED = (200, 0, 0)
 Q = defaultdict(lambda: [0.0] * 9)
 alpha = 0.1     # learning rate
 gamma = 0.95    # discount factor
-epsilon = 0.6   # exploration rate
+epsilon = 0.4   # exploration rate
 # -----------------------------
 # RAW TRACK (LOGICAL SPACE)
 # -----------------------------
